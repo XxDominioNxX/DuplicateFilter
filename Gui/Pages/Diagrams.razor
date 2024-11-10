@@ -1,0 +1,298 @@
+﻿@page "/diagramms"
+@using ChartJs.Blazor.Common
+@using ChartJs.Blazor.Common.Axes
+@using ChartJs.Blazor.Common.Enums
+@using ChartJs.Blazor.Common.Time
+@using ChartJs.Blazor.Util
+@using Gui.Models
+@using Gui.Models.DTO
+@using Gui.Services
+@using MudBlazor
+@using Radzen
+@using Radzen.Blazor
+@using System.Globalization
+@using Newtonsoft.Json;
+@using ChartJs.Blazor.PieChart
+@using ChartJs.Blazor.LineChart
+@using ChartJs.Blazor.BarChart
+@using ChartJs.Blazor.BarChart.Axes
+@using System.Threading
+@inject FilterService filterService
+@inject HttpClient client
+
+<PageTitle>Диаграммы</PageTitle>
+@*Для графиков нужно:
+    Количество дубликатов
+    Количество всего элементов
+    Количество за последние несколько часов
+*@
+
+@if (analitics == null)
+{
+    <div class="load">
+        <hr /><hr /><hr /><hr />
+    </div>
+}
+else
+{
+    <Animate Animation="Animations.Fade" Duration="TimeSpan.FromSeconds(0.5)">
+        <div class="row mb-5">
+            <div class="col-xl-4">
+                <Chart Height="200" Config="_configPieDublicate"></Chart>
+            </div>
+            <div class="col-xl-4">
+                <Chart Height="200" Config="_configPieTypes"></Chart>
+            </div>
+            <div class="col-xl-4">
+                <Chart Height="200" Config="_configPieMemory"></Chart>
+            </div>
+        </div>
+        <div class="row mud-height-full">
+            <div class="col-xl-4">
+                <Chart Height="250" Config="_configRAM"></Chart>
+            </div>
+            <div class="col-xl-8">
+                <Chart Height="120" Config="_configTime"></Chart>
+            </div>
+        </div>
+    </Animate>
+}
+
+
+
+
+
+
+
+
+@code {
+    private Analitics analitics;
+    private PieConfig _configPieDublicate;
+    private PieConfig _configPieTypes;
+    private PieConfig _configPieMemory;
+    private LineConfig _configTime;
+    private BarConfig _configRAM;
+
+
+    //-------------------------------------------------------
+    //--------------------Инициализация----------------------
+    //-------------------------------------------------------
+
+    protected override async Task OnInitializedAsync()
+    {
+        await InitializingDiagramms();
+    }
+
+    private async Task InitializingDiagramms()
+    {
+        filterService = new FilterService(client);
+        var response = await filterService.GetAnalitics<ResponseDTO>();
+        if (response != null)
+        {
+            analitics = JsonConvert.DeserializeObject<Analitics>(Convert.ToString(response.Result));
+        
+            //-----------------------------------
+            //--------------Дубликаты------------
+            //-----------------------------------
+
+            _configPieDublicate = new PieConfig
+                {
+                    Options = new PieOptions
+                    {
+                        Responsive = true,
+                        Title = new OptionsTitle
+                        {
+                            Display = true,
+                            Text = "Дубликаты"
+                        }
+                    }
+                };
+
+            foreach (string category in new[] { "Количество дубликатов", "Количество добавленных" })
+            {
+                _configPieDublicate.Data.Labels.Add(category);
+            }
+
+            PieDataset<int> dataset1 = new PieDataset<int>(new[] { Convert.ToInt32(analitics.DuplicateCount), Convert.ToInt32(analitics.AddedCount) })
+                {
+                    BackgroundColor = new[]
+                                    {
+                    ColorUtil.ColorHexString(50, 205, 98),
+                    ColorUtil.ColorHexString(53, 79, 202),
+                }
+                };
+
+            _configPieDublicate.Data.Datasets.Add(dataset1);
+
+
+
+            //-----------------------------------
+            //--------------Типы-----------------
+            //-----------------------------------
+
+            _configPieTypes = new PieConfig
+                {
+                    Options = new PieOptions
+                    {
+                        Responsive = true,
+                        Title = new OptionsTitle
+                        {
+                            Display = true,
+                            Text = "Типы сообщений"
+                        }
+                    }
+                };
+
+            foreach (var category in analitics.CountTypes.Keys)
+            {
+                _configPieTypes.Data.Labels.Add(category.ToString());
+            }
+
+            var dataset2 = new PieDataset<int>(analitics.CountTypes.Values.Select(x => Convert.ToInt32(x)).ToArray())
+                {
+                    BackgroundColor = new[]  {
+                    ColorUtil.ColorHexString(50, 205, 98),
+                    ColorUtil.ColorHexString(53, 79, 202),
+                    ColorUtil.ColorHexString(241, 91, 241)
+                }
+                };
+
+            _configPieTypes.Data.Datasets.Add(dataset2);
+
+
+
+            //-------------------------------------
+            //--------------Память-----------------
+            //-------------------------------------
+
+            _configPieMemory = new PieConfig
+                {
+                    Options = new PieOptions
+                    {
+                        Responsive = true,
+                        Title = new OptionsTitle
+                        {
+                            Display = true,
+                            Text = "Дисковое пространство, Гб"
+                        }
+                    }
+                };
+
+            foreach (var category in new[] { "Свободно", "Использовано" })
+            {
+                _configPieMemory.Data.Labels.Add(category.ToString());
+            }
+
+            var dataset3 = new PieDataset<double>(new[] { analitics.FreeDiskMemory, analitics.TotalDiskMemory - analitics.FreeDiskMemory })
+                {
+                    BackgroundColor = new[]  {
+                    ColorUtil.ColorHexString(53, 79, 202),
+                    ColorUtil.ColorHexString(50, 205, 98)
+                }
+                };
+
+            _configPieMemory.Data.Datasets.Add(dataset3);
+
+
+            //-------------------------------------
+            //--------------Время------------------
+            //-------------------------------------
+
+            _configTime = new LineConfig
+                {
+                    Options = new LineOptions
+                    {
+                        Responsive = true,
+                        Title = new OptionsTitle
+                        {
+                            Display = true,
+                            Text = "Зарегистрированные сообщения за последние 12 часов"
+                        },
+                        Tooltips = new Tooltips
+                        {
+                            Mode = InteractionMode.Nearest,
+                            Intersect = true
+                        },
+                        Hover = new Hover
+                        {
+                            Mode = InteractionMode.Nearest,
+                            Intersect = true
+                        }
+
+                    }
+                };
+
+            foreach (var item in analitics.Dates.Keys)
+            {
+                _configTime.Data.Labels.Add(item);                  //---Нижняя надпись
+            }
+
+            IDataset<int> dataset4 = new LineDataset<int>(analitics.Dates.Values.Select(x => Convert.ToInt32(x)))
+                {
+                    Label = "",
+                    BackgroundColor = ColorUtil.ColorHexString(50, 205, 98),
+                    BorderColor = ColorUtil.ColorHexString(53, 79, 202),
+                    Fill = FillingMode.Disabled
+                };
+
+            _configTime.Data.Datasets.Add(dataset4);
+
+
+            //-------------------------------------
+            //----------------ОЗУ------------------
+            //-------------------------------------
+
+            _configRAM = new BarConfig
+                {
+                    Options = new BarOptions
+                    {
+                        Responsive = true,
+                        Title = new OptionsTitle
+                        {
+                            Display = true,
+                            Text = "ОЗУ"
+                        },
+                        Tooltips = new Tooltips
+                        {
+                            Mode = InteractionMode.Index,
+                            Intersect = false
+                        },
+                        Scales = new BarScales
+                        {
+                            XAxes = new List<CartesianAxis>
+                    {
+                        new BarCategoryAxis
+                        {
+                            Stacked = true,
+                            BarThickness = 60
+                        }
+                    },
+                            YAxes = new List<CartesianAxis>
+                    {
+                        new BarLinearCartesianAxis
+                        {
+                            Stacked = true
+                        }
+                    }
+                        }
+                    }
+                };
+
+            int usedMemory = (int)(((analitics.TotalRAM - analitics.FreeRAM) / analitics.TotalRAM) * 100);
+
+            IDataset<int> dataset5 = new BarDataset<int>(new[] { usedMemory })
+                {
+                    Label = "Используется",
+                    BackgroundColor = ColorUtil.ColorHexString(53, 79, 202)
+                };
+
+            IDataset<int> dataset6 = new BarDataset<int>(new[] { 100 - usedMemory })
+                {
+                    Label = "Всего",
+                    BackgroundColor = ColorUtil.ColorHexString(50, 205, 98)
+                };
+            _configRAM.Data.Datasets.Add(dataset5);
+            _configRAM.Data.Datasets.Add(dataset6);
+        }
+    }
+}

@@ -1,0 +1,190 @@
+﻿@page "/add"
+@using Gui.Models
+@using Gui.Models.DTO
+@using Gui.Services
+@using Newtonsoft.Json;
+@using System.ComponentModel
+@inject FilterService filterService
+@inject HttpClient client
+@inject ISnackbar Snackbar
+@inject SweetAlertService Swal
+
+
+@code {
+    private List<FilePath> fileNames = new List<FilePath>();
+    private int pathCounter = 0;
+    private string directoryPath = "";
+    List<bool> results = new List<bool>();
+    private string MessageString = "";
+    private bool StringMode = false;
+    private bool SelectAllState = false;
+
+    private void SelectAll(){
+        foreach (var item in fileNames)
+        {
+            item.IsEnabled = !SelectAllState;
+        }
+    }
+
+    private async void UploadFile()
+    {
+        filterService = new FilterService(client);
+        results.Clear();
+        foreach (var item in fileNames)
+        {
+            if (item.IsEnabled == true)
+            {
+                if (StringMode)
+                {
+                    var response = await filterService.AddMessageAsync<ResponseDTO>(new MessageDTO { Info = item.FullName, TypeInfo = SD.MessageType.FileStrings });
+                    results.Add(response.IsSuccess);
+                }
+                else
+                {
+                    var response = await filterService.AddMessageAsync<ResponseDTO>(new MessageDTO { Info = item.FullName, TypeInfo = SD.MessageType.FilePath });
+                    results.Add(response.IsSuccess);
+                }
+            }
+        }
+        try
+        {
+            await Swal.FireAsync("Файлы успешно добавлены");
+        }
+        catch (Exception)
+        {
+            await Swal.FireAsync(new SweetAlertOptions
+                {
+                    Icon = SweetAlertIcon.Error,
+                    Title = "Превышено время ожидания",
+                    Text = "Попробуйте еще раз"
+                });
+        }
+    }
+
+    private async void UploadString()
+    {
+        filterService = new FilterService(client);
+        var response = await filterService.AddMessageAsync<ResponseDTO>(new MessageDTO { Date = DateTime.Now.ToLocalTime().ToString(), Info = MessageString, TypeInfo = SD.MessageType.String });
+        await Swal.FireAsync("Строка успешно добавлена");
+    }
+
+    private async void Clear()
+    {
+        SelectAllState = false;
+        foreach (var item in fileNames)
+        {
+            item.IsEnabled = false;
+        }
+    }
+
+    private void CheckboxClick(int id)
+    {
+
+        if (StringMode)
+        {
+            for (int i = 0; i < fileNames.Count; i++)
+            {
+                if (i != id)
+                {
+                    fileNames[i].IsEnabled = false;
+                }
+                else
+                {
+                    fileNames[i].IsEnabled = true;
+                }
+            }
+        }
+        else
+        {
+            fileNames[id].IsEnabled = !fileNames[id].IsEnabled;
+        }
+    }
+
+    private async Task GetFileNames()
+    {
+        filterService = new FilterService(client);
+        var response = await filterService.GetFilesPath<ResponseDTO>(directoryPath);
+        fileNames.Clear();
+        List<string> res;
+        if (response != null)
+        {
+            res = JsonConvert.DeserializeObject<List<string>>(Convert.ToString(response.Result));
+            for (int i = 0; i < res.Count; i++)
+            {
+                fileNames.Add(new FilePath { FullName = res[i], Id = i });
+            }
+        }
+    }
+
+}
+
+
+<PageTitle>Добавление</PageTitle>
+
+
+<Animate Animation="Animations.Fade" Duration="TimeSpan.FromSeconds(0.5)">
+    <h3>Добавить файлы</h3>
+    <div class="row">
+        <div class="col-6">
+            <MudTextField style="border-bottom: solid 1px" @bind-Value=@directoryPath T="string" Label="Укажите путь" HelperText="Из указанной директории загрузятся файлы" HelperTextOnFocus="true" Variant="MudBlazor.Variant.Text" />
+            <button class="btn btn-outline-success" @onclick="GetFileNames">Обновить</button>
+        </div>
+        <div class="col-6">
+            @if (fileNames.Any())
+            {
+                <div>
+                    <div @onclick=@(() => SelectAll()) style="margin-bottom:15px">
+                        <input class="form-check-input" type="checkbox" @bind="SelectAllState" />
+                        <label class="form-check-label">
+                            Выделить всё
+                        </label>
+                    </div>
+                    <div>
+                        <div class="addBox navbar-nav-scroll">
+                            @* Elements *@
+                            @foreach (var item in fileNames)
+                            {
+                                <div class="checkbox-path-item" @onclick=@(() => CheckboxClick(item.Id))>
+                                    <input class="form-check-input" type="checkbox" @bind="item.IsEnabled" />
+                                    <label class="form-check-label">
+                                        @item.FullName
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <button class="btn btn-outline-primary mt-1" style="width:150px" @onclick="UploadFile">Отправить</button>
+                        <button class="btn btn-outline-secondary mt-1" style="width:150px" @onclick="Clear">Очистить</button>
+
+                        <div class="checkbox-stringMode">
+                            <input class="form-check-input" type="checkbox" @onclick="Clear" @bind="StringMode" />
+                            <label class="form-check-label">
+                                Считывать строки в файле
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+
+
+    <div class="horizontal-line" ></div>
+
+    <h3 style="margin-top:40px;">Добавить строку</h3>
+    <div style="margin-bottom:10px;"></div>
+    <MudTextField style="border-bottom: solid 1px" @bind-Value=@MessageString T="string" Label="Введите строку" HelperText="Эта строка является сообщением" HelperTextOnFocus="true" Variant="MudBlazor.Variant.Text" />
+    <div class="row mb-5">
+        <div class="col-12">
+            <button class="btn btn-outline-primary mt-1" style="width:150px" @onclick="UploadString">Отправить</button>
+            <button class="btn btn-outline-danger mt-1" style="width:150px">Очистить</button>
+        </div>
+    </div>
+
+</Animate>
+
+
